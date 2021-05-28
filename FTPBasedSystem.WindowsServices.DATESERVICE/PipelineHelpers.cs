@@ -1,8 +1,11 @@
 ﻿using System;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Cache;
 using System.Text;
+using Newtonsoft.Json;
+using RabbitMQ.Client;
 
 namespace FTPBasedSystem.WindowsServices.DATESERVICE
 {
@@ -38,21 +41,65 @@ namespace FTPBasedSystem.WindowsServices.DATESERVICE
             return fileContents;
         }
 
-        public static string SortAllRows(string tableText)
+        /// <summary>
+        /// Sort the given text
+        /// </summary>
+        /// <param name="tableText"></param>
+        /// <param name="isAscending">if true -> Ascending (default), if false -> Descending</param>
+        /// <returns></returns>
+        public static string SortAllLines(string tableText, bool isAscending = true)
         {
             if (tableText == null) throw new ArgumentNullException(nameof(tableText));
-            return string.Empty;
+
+            var dateStrings = tableText.Split('\n');
+
+            // filter logic based on: only dates which have valid format can be filtered!
+            var validDates = dateStrings
+                .Where(x => DateTime.TryParse(x, out var dt))
+                .Select(DateTime.Parse);
+
+            var result = isAscending ? validDates.OrderBy(d => d) : validDates.OrderByDescending(d => d);
+
+            Console.WriteLine($"Received data is sorted by {(isAscending ? "ascending" : "descending")} successfully!");
+
+            return string.Join('\n', result);
         }
 
-        public static bool EnqueueTheText(string result)
+        public static void EnqueueTheDateToRabbitMq(string result)
         {
-            if (result == null) throw new ArgumentNullException(nameof(result));
+            try
+            {
+                if (result == null) throw new ArgumentNullException(nameof(result));
 
-            // if successfully added to MQ then return true
+                var factory = new ConnectionFactory
+                {
+                    Uri = new Uri("amqp://guest:guest@localhost:5672")
+                };
+                using var connection = factory.CreateConnection();
+                using var channel = connection.CreateModel();
+                const string queueName = "dates-queue";
+                channel.QueueDeclare(queueName,
+                    durable: true,
+                    exclusive: false,
+                    autoDelete: false,
+                    arguments: null);
 
-            // otherwise false
+                var message = new QueueMessage
+                {
+                    Name = "Date-Producer",
+                    Message = result
+                };
 
-            return true;
+                var body = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(message));
+
+                Console.WriteLine("Publishing the message..");
+                channel.BasicPublish("", queueName, null, body);
+                Console.WriteLine($"Message published to the {queueName} by {message.Name}");
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.Message);
+            }
         }
     }
 }
