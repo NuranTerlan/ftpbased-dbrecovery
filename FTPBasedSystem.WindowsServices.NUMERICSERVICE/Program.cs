@@ -6,7 +6,9 @@ namespace FTPBasedSystem.WindowsServices.NUMERICSERVICE
     {
         static void Main(string[] args)
         {
-            Console.WriteLine("Hello World!");
+            Console.WriteLine("WS -> Numeric Service is starting to watch proper directory..");
+            var watcher = new FtpDirectoryWatcher();
+            watcher.WatchDirectory();
         }
     }
 }
