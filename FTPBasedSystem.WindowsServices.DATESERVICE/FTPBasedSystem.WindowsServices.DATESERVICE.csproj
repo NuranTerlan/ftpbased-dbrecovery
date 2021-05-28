@@ -6,6 +6,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="RabbitMQ.Client" Version="6.2.1" />
     <PackageReference Include="WinSCP" Version="5.17.10" />
   </ItemGroup>
 
