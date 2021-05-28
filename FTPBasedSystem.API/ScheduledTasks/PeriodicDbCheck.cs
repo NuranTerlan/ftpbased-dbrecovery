@@ -8,7 +8,7 @@ namespace FTPBasedSystem.API.ScheduledTasks
 {
     public class PeriodicDbCheck : ScheduledProcessor
     {
-        protected override string Schedule => "1 * * * *";
+        protected override string Schedule => "*/1 * * * *";
 
         private readonly ILogger<PeriodicDbCheck> _logger;
 
