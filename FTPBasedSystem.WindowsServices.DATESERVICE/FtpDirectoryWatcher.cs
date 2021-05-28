@@ -34,7 +34,7 @@ namespace FTPBasedSystem.WindowsServices.DATESERVICE
 
                     while (true)
                     {
-                        // Collect file list
+                        // Collect file list from specific directory
                         var files =
                             session.EnumerateRemoteFiles(
                                 session.HomePath, "*.*", EnumerationOptions.AllDirectories)
