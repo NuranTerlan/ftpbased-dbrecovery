@@ -55,9 +55,10 @@ namespace FTPBasedSystem.WindowsServices.DATESERVICE
                                 {
                                     Console.WriteLine($"\nTRIGGER => New file added to date service: {path}");
                                     var content = PipelineHelpers.ReadFromFtp(path, Credential);
-                                    Console.WriteLine($"Content of this file: \n{content}");
+                                    //Console.WriteLine($"Content of this file: \n{content}");
+                                    var sortedDates = PipelineHelpers.SortAllLines(content, false);
+                                    PipelineHelpers.EnqueueTheDateToRabbitMq(sortedDates);
                                 }
-
                             }
 
                             // if remove watch needed use commented code below
