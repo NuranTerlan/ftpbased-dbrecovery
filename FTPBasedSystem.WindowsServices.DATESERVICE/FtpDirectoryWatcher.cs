@@ -53,8 +53,8 @@ namespace FTPBasedSystem.WindowsServices.DATESERVICE
                             {
                                 foreach (var path in added)
                                 {
-                                    Console.WriteLine($"TRIGGER => New file added to dates service: {path}");
-                                    var content = PipelineHelpers.ReadFromFtp(path);
+                                    Console.WriteLine($"\nTRIGGER => New file added to date service: {path}");
+                                    var content = PipelineHelpers.ReadFromFtp(path, Credential);
                                     Console.WriteLine($"Content of this file: \n{content}");
                                 }
 

@@ -8,9 +8,10 @@ namespace FTPBasedSystem.WindowsServices.DATESERVICE
 {
     public static class PipelineHelpers
     {
-        public static string ReadFromFtp(string directory)
+        public static string ReadFromFtp(string directory, string credential)
         {
             if (directory is null) throw new ArgumentNullException(nameof(directory));
+            if (credential is null) throw new ArgumentNullException(nameof(credential));
 
             var ftpIp = "ftp://127.0.0.1/" + directory;
             var ftpRequest = (FtpWebRequest) WebRequest.Create(ftpIp);
@@ -20,7 +21,6 @@ namespace FTPBasedSystem.WindowsServices.DATESERVICE
             ftpRequest.UsePassive = true;
             ftpRequest.KeepAlive = false;
             ftpRequest.Method = WebRequestMethods.Ftp.DownloadFile;
-            const string credential = "dateservice";
             ftpRequest.Credentials = new NetworkCredential(credential, credential);
 
             using var ftpResponse = (FtpWebResponse)ftpRequest.GetResponse();
