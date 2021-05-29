@@ -80,7 +80,7 @@ namespace FTPBasedSystem.API
                 app.UseHangfireDashboard("/hang-dashboard");
                 backJobClient.Enqueue(() => Console.WriteLine("Fired!"));
                 recurringJobManager.AddOrUpdate("DbCheck12345", 
-                    () => databaseChecker.FetchAndSendToFtpServer(), "*/2 * * * *"); // means every seconds
+                    () => databaseChecker.FetchAndSendToFtpServer(), "*/3 * * * *");
             }
 
             app.UseStaticFiles();
