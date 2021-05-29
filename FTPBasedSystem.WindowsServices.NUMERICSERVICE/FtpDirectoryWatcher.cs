@@ -54,8 +54,17 @@ namespace FTPBasedSystem.WindowsServices.NUMERICSERVICE
                                 foreach (var path in added)
                                 {
                                     Console.WriteLine($"\nTRIGGER => New file added to numeric service: {path}");
-                                    var content = PipelineHelpers.ReadFromFtp(path, Credential);
-                                    Console.WriteLine($"Content of this file: \n{content}");
+                                    try
+                                    {
+                                        var content = PipelineHelpers.ReadFromFtp(path);
+                                        var sortedNumbers = PipelineHelpers.SortAllLines(content, false);
+                                        PipelineHelpers.UploadFileViaFtp(sortedNumbers, path);
+                                        PipelineHelpers.EnqueueTheDateToRabbitMq(sortedNumbers);
+                                    }
+                                    catch (Exception e)
+                                    {
+                                        Console.WriteLine(e.Message);
+                                    }
                                 }
 
                             }
