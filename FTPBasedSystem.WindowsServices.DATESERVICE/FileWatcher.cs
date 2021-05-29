@@ -52,7 +52,7 @@ namespace FTPBasedSystem.WindowsServices.DATESERVICE
         private static void OnNewFileAdded(object source, FileSystemEventArgs e)
         {
             Console.WriteLine($"Trigger new file observed | name is: {e.Name}");
-            var content = PipelineHelpers.ReadFromFtp(e.Name, "credential");
+            var content = PipelineHelpers.ReadFromFtp(e.Name);
             Console.WriteLine($"Content of this file: {content}");
         }
     }
