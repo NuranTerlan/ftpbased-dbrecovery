@@ -54,10 +54,17 @@ namespace FTPBasedSystem.WindowsServices.DATESERVICE
                                 foreach (var path in added)
                                 {
                                     Console.WriteLine($"\nTRIGGER => New file added to date service: {path}");
-                                    var content = PipelineHelpers.ReadFromFtp(path, Credential);
-                                    //Console.WriteLine($"Content of this file: \n{content}");
-                                    var sortedDates = PipelineHelpers.SortAllLines(content, false);
-                                    PipelineHelpers.EnqueueTheDateToRabbitMq(sortedDates);
+                                    try
+                                    {
+                                        var content = PipelineHelpers.ReadFromFtp(path);
+                                        var sortedDates = PipelineHelpers.SortAllLines(content, false);
+                                        PipelineHelpers.UploadFileViaFtp(sortedDates, path);
+                                        PipelineHelpers.EnqueueTheDateToRabbitMq(sortedDates);
+                                    }
+                                    catch (Exception e)
+                                    {
+                                        Console.WriteLine(e.Message);
+                                    }
                                 }
                             }
 
