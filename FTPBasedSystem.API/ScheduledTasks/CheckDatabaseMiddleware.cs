@@ -10,7 +10,6 @@ using FTPBasedSystem.DOMAINENTITIES.DTOs;
 using FTPBasedSystem.SERVICES.Abstraction;
 using FTPBasedSystem.SERVICES.FtpServices.Abstraction;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json.Converters;
 
 namespace FTPBasedSystem.API.ScheduledTasks
 {
