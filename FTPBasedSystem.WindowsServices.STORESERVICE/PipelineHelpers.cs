@@ -1,30 +1,32 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Net;
 using System.Net.Cache;
 using System.Text;
 using Newtonsoft.Json;
 using RabbitMQ.Client;
+using RabbitMQ.Client.Events;
 
-namespace FTPBasedSystem.WindowsServices.TEXTSERVICE
+namespace FTPBasedSystem.WindowsServices.STORESERVICE
 {
     public static class PipelineHelpers
     {
-        private const string Credential = "textservice";
+        private const string Credential = "storeservice";
 
         public static string ReadFromFtp(string directory)
         {
             if (directory is null) throw new ArgumentNullException(nameof(directory));
 
             var ftpIp = "ftp://127.0.0.1/" + directory;
-            var ftpRequest = (FtpWebRequest) WebRequest.Create(ftpIp);
+            var ftpRequest = (FtpWebRequest)WebRequest.Create(ftpIp);
             ftpRequest.CachePolicy = new RequestCachePolicy(RequestCacheLevel.CacheIfAvailable);
 
             ftpRequest.UseBinary = true;
             ftpRequest.UsePassive = true;
             ftpRequest.KeepAlive = false;
             ftpRequest.Method = WebRequestMethods.Ftp.DownloadFile;
+
             ftpRequest.Credentials = new NetworkCredential(Credential, Credential);
 
             using var ftpResponse = (FtpWebResponse)ftpRequest.GetResponse();
@@ -59,55 +61,63 @@ namespace FTPBasedSystem.WindowsServices.TEXTSERVICE
             requestedStream.Write(Encoding.UTF8.GetBytes(fileContents), 0, fileContents.Length);
             requestedStream.Close();
 
-            using var ftpResponse = (FtpWebResponse)ftpRequest.GetResponse();
+            using var ftpResponse = (FtpWebResponse) ftpRequest.GetResponse();
             Console.WriteLine($"\n{to} is uploaded via ftp | " +
-                              $"Status => Code: {ftpResponse.StatusCode}, " +
-                              $"Description: {ftpResponse.StatusDescription}");
+                                   $"Status => Code: {ftpResponse.StatusCode}, " +
+                                   $"Description: {ftpResponse.StatusDescription}");
             ftpResponse.Close();
         }
 
 
-        public static string SortAllLines(string tableText, bool isAscending = true)
+        public static void ConnectAndWaitAllMessages()
         {
-            if (tableText == null) throw new ArgumentNullException(nameof(tableText));
-
-            var texts = tableText.Trim().Split(Environment.NewLine);
-
-            var result = isAscending ? texts.OrderBy(t => t) : texts.OrderByDescending(t => t);
-
-            Console.WriteLine($"Received texts data is sorted by {(isAscending ? "ascending" : "descending")} successfully!");
-
-            return string.Join('\n', result);
-        }
-
-        public static void EnqueueTheDateToRabbitMq(string result)
-        {
-            if (result == null) throw new ArgumentNullException(nameof(result));
-
             var factory = new ConnectionFactory
             {
                 Uri = new Uri("amqp://guest:guest@localhost:5672")
             };
+
             using var connection = factory.CreateConnection();
             using var channel = connection.CreateModel();
-            const string queueName = "texts-queue";
-            channel.QueueDeclare(queueName,
-                durable: true,
-                exclusive: false,
-                autoDelete: false,
-                arguments: null);
-
-            var message = new QueueMessage
+            var dictionary = new Dictionary<string, string>
             {
-                Name = "Text-Producer",
-                Message = result
+                {"dates-queue", "datesservice"},
+                {"numbers-queue", "numericservice"},
+                {"texts-queue", "textservice"}
             };
 
-            var body = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(message));
+            foreach (var (queue, credential) in dictionary)
+            {
+                channel.QueueDeclare(queue,
+                    durable: true,
+                    exclusive: false,
+                    autoDelete: false,
+                    arguments: null);
 
-            Console.WriteLine("Publishing the message..");
-            channel.BasicPublish("", queueName, null, body);
-            Console.WriteLine($"Message published to the {queueName} by {message.Name}");
+                var consumer = new EventingBasicConsumer(channel);
+                consumer.Received += (sender, e) =>
+                {
+                    var body = e.Body.ToArray();
+                    var tempSerializing = Encoding.UTF8.GetString(body);
+                    var queueMsg = JsonConvert.DeserializeObject<QueueMessage>(tempSerializing);
+                    Console.WriteLine($"\nMessage which produced by {queueMsg.Name} is received from QUEUE -> {queue}");
+                    try
+                    {
+                        const string directory = "result.txt";
+                        var contentOfMsg = ReadFromFtp(directory);
+                        var resultContent = $"{(contentOfMsg != string.Empty ? contentOfMsg + '\n' : "")}{queueMsg.Message}";
+                        UploadFileViaFtp(resultContent, directory);
+                        Console.WriteLine($"\nMessage content added to {directory}");
+                    }
+                    catch (Exception exception)
+                    {
+                        Console.WriteLine(exception.Message);
+                    }
+                };
+                Console.WriteLine($"Observing started for new messages from QUEUE -> {queue} >>");
+                channel.BasicConsume(queue, true, consumer);
+            }
+
+            Console.ReadLine();
         }
     }
 }
