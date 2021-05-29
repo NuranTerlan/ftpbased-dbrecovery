@@ -54,8 +54,17 @@ namespace FTPBasedSystem.WindowsServices.TEXTSERVICE
                                 foreach (var path in added)
                                 {
                                     Console.WriteLine($"\nTRIGGER => New file added to text service: {path}");
-                                    var content = PipelineHelpers.ReadFromFtp(path, Credential);
-                                    Console.WriteLine($"Content of this file: \n{content}");
+                                    try
+                                    {
+                                        var content = PipelineHelpers.ReadFromFtp(path);
+                                        var sortedTexts = PipelineHelpers.SortAllLines(content, false);
+                                        PipelineHelpers.UploadFileViaFtp(sortedTexts, path);
+                                        PipelineHelpers.EnqueueTheDateToRabbitMq(sortedTexts);
+                                    }
+                                    catch (Exception e)
+                                    {
+                                        Console.WriteLine(e.Message);
+                                    }
                                 }
 
                             }
