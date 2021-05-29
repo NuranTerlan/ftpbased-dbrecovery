@@ -5,5 +5,10 @@ namespace FTPBasedSystem.DOMAINENTITIES.Models
     public class Number : BaseEntity, IEntityModel
     {
         public int NumberValue { get; set; }
+
+        public override string ToString()
+        {
+            return $"{NumberValue}";
+        }
     }
 }
