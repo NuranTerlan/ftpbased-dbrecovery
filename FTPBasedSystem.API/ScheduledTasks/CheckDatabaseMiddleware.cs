@@ -23,15 +23,17 @@ namespace FTPBasedSystem.API.ScheduledTasks
         private readonly IUnitOfWork _unitOfWork;
         private readonly IFtpHelpers _ftpHelpers;
         private readonly FilePathOptions _filePathOptions;
+        private readonly FtpRequestOptions _ftpRequestOptions;
 
         public CheckDatabaseMiddleware(IAppDbContext context, ILogger<CheckDatabaseMiddleware> logger, IUnitOfWork unitOfWork, 
-            IFtpHelpers ftpHelpers, IOptions<FilePathOptions> fileNameOptions)
+            IFtpHelpers ftpHelpers, IOptions<FilePathOptions> fileNameOptions, IOptions<FtpRequestOptions> ftpRequestOptions)
         {
             _context = context;
             _logger = logger;
             _unitOfWork = unitOfWork;
             _ftpHelpers = ftpHelpers;
             _filePathOptions = fileNameOptions.Value;
+            _ftpRequestOptions = ftpRequestOptions.Value;
         }
 
         public async Task FetchAndSendToFtpServer()
@@ -43,9 +45,9 @@ namespace FTPBasedSystem.API.ScheduledTasks
 
             var dictionary = new Dictionary<List<string>, IEnumerable<IEntityDto>>
             {
-                {new List<string> {_filePathOptions.LocalNumeric, _filePathOptions.FtpNumeric}, numbers},
-                {new List<string>{_filePathOptions.LocalText, _filePathOptions.FtpText}, texts},
-                {new List<string>{_filePathOptions.LocalDate, _filePathOptions.FtpDate}, dates}
+                {new List<string> {_filePathOptions.LocalNumeric, _ftpRequestOptions.NumericCredential}, numbers},
+                {new List<string>{_filePathOptions.LocalText, _ftpRequestOptions.TextCredential}, texts},
+                {new List<string>{_filePathOptions.LocalDate, _ftpRequestOptions.DateCredential}, dates}
             };
 
             var isAnyDataCameFromDb = numbers.Count > 0 || texts.Count > 0 || dates.Count > 0;
@@ -63,11 +65,11 @@ namespace FTPBasedSystem.API.ScheduledTasks
                     continue;
                 }
 
-                var lastConfig = await WriteListAndReturnLastConfig(entityDtoList, fromFile);
+                var lastConfig = await WriteListAndReturnLastConfig(entityDtoList, fromFile.ToLower());
                 if (lastConfig is null) continue;
 
                 // lastConfig.Item1 is {from} and lastConfig.Item2 is {to}
-                var uploaded = await _ftpHelpers.UploadFile(credential, credential, lastConfig.Item1, lastConfig.Item2);
+                var uploaded = await _ftpHelpers.UploadFile(_ftpRequestOptions.HostName, credential, lastConfig.Item1, lastConfig.Item2);
                 if (uploaded)
                 {
                     var tableName = fromFile;
@@ -86,7 +88,7 @@ namespace FTPBasedSystem.API.ScheduledTasks
         {
             try
             {
-                var from = $"{_filePathOptions.TempDataFolder}\\{fromFile.ToLower()}.txt";
+                var from = $"{_filePathOptions.TempDataFolder}\\{fromFile}.txt";
                 using (var stream = File.WriteAllTextAsync(from, string.Empty))
                 {
                     if (stream.IsCompletedSuccessfully)
