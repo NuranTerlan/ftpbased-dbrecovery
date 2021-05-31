@@ -17,17 +17,17 @@ namespace FTPBasedSystem.SERVICES.FtpServices.Concretion
             _logger = logger;
         }
 
-        public async Task<bool> UploadFile(string username, string password, string from, string to)
+        public async Task<bool> UploadFile(string hostName, string credential, string from, string to)
         {
             try
             {
-                var ftpIp = "ftp://127.0.0.1/" + to;
+                var ftpIp = "ftp://" + hostName + '/' + to;
                 var ftpRequest = (FtpWebRequest) WebRequest.Create(ftpIp);
                 ftpRequest.UseBinary = true;
                 ftpRequest.UsePassive = true;
                 ftpRequest.KeepAlive = false;
                 ftpRequest.Method = WebRequestMethods.Ftp.UploadFile;
-                ftpRequest.Credentials = new NetworkCredential(username, password);
+                ftpRequest.Credentials = new NetworkCredential(credential, credential);
 
                 using var srcReader = new StreamReader(from);
                 var fileContents = Encoding.UTF8.GetBytes(await srcReader.ReadToEndAsync());

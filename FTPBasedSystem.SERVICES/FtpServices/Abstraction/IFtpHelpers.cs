@@ -4,6 +4,6 @@ namespace FTPBasedSystem.SERVICES.FtpServices.Abstraction
 {
     public interface IFtpHelpers
     {
-        Task<bool> UploadFile(string username, string password, string from, string to);
+        Task<bool> UploadFile(string hostName, string credential, string from, string to);
     }
 }
