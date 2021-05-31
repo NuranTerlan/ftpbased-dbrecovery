@@ -17,10 +17,13 @@ namespace FTPBasedSystem.API.Helpers
             TryParse(options.EveryDays, out var days);
             TryParse(options.EveryMonths, out var months);
 
-            var configNums = new List<int>
+            var configNums = new List<int>();
+            if (seconds != 0)
             {
-                seconds, minutes, hours, days, months
-            };
+                configNums.Add(seconds);
+            }
+
+            configNums.AddRange(new List<int> {minutes, hours, days, months});
 
             var resultCron = "";
             foreach (var configNum in configNums)
