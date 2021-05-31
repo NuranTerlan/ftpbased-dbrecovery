@@ -4,12 +4,15 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
+using FTPBasedSystem.API.Configs;
+using FTPBasedSystem.API.Helpers;
 using FTPBasedSystem.API.ScheduledTasks.Abstract;
 using FTPBasedSystem.DATAACCESS.Data.Abstraction;
 using FTPBasedSystem.DOMAINENTITIES.DTOs;
 using FTPBasedSystem.SERVICES.Abstraction;
 using FTPBasedSystem.SERVICES.FtpServices.Abstraction;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace FTPBasedSystem.API.ScheduledTasks
 {
@@ -19,83 +22,97 @@ namespace FTPBasedSystem.API.ScheduledTasks
         private readonly ILogger<CheckDatabaseMiddleware> _logger;
         private readonly IUnitOfWork _unitOfWork;
         private readonly IFtpHelpers _ftpHelpers;
+        private readonly FilePathOptions _filePathOptions;
 
-        public CheckDatabaseMiddleware(IAppDbContext context, ILogger<CheckDatabaseMiddleware> logger, IUnitOfWork unitOfWork, IFtpHelpers ftpHelpers)
+        public CheckDatabaseMiddleware(IAppDbContext context, ILogger<CheckDatabaseMiddleware> logger, IUnitOfWork unitOfWork, 
+            IFtpHelpers ftpHelpers, IOptions<FilePathOptions> fileNameOptions)
         {
             _context = context;
             _logger = logger;
             _unitOfWork = unitOfWork;
             _ftpHelpers = ftpHelpers;
+            _filePathOptions = fileNameOptions.Value;
         }
 
         public async Task FetchAndSendToFtpServer()
         {
-            try
+            var successfulTables = new HashSet<string>();
+            var numbers = await _unitOfWork.Numeric.GetAllEntities();
+            var texts = await _unitOfWork.Text.GetAllEntities();
+            var dates = await _unitOfWork.Date.GetAllEntities();
+
+            var dictionary = new Dictionary<List<string>, IEnumerable<IEntityDto>>
             {
-                var numbers = await _unitOfWork.Numeric.GetAllEntities();
-                var texts = await _unitOfWork.Text.GetAllEntities();
-                var dates = await _unitOfWork.Date.GetAllEntities();
+                {new List<string> {_filePathOptions.LocalNumeric, _filePathOptions.FtpNumeric}, numbers},
+                {new List<string>{_filePathOptions.LocalText, _filePathOptions.FtpText}, texts},
+                {new List<string>{_filePathOptions.LocalDate, _filePathOptions.FtpDate}, dates}
+            };
 
-                var dictionary = new Dictionary<List<string>, IEnumerable<IEntityDto>>
+            var isAnyDataCameFromDb = numbers.Count > 0 || texts.Count > 0 || dates.Count > 0;
+
+            foreach (var (config,items) in dictionary)
+            {
+                var fromFile = Generators.FirstCaseUpperStringGenerator(config[0]);
+                var credential = config[1].ToLower();
+                _logger.LogInformation($"Checking process is started for {fromFile}s service");
+
+                var entityDtoList = items as IEntityDto[] ?? items.ToArray();
+                if (!entityDtoList.Any())
                 {
-                    {new List<string> {"number", "numericservice"}, numbers},
-                    {new List<string>{"text", "textservice"}, texts},
-                    {new List<string>{"date", "dateservice"}, dates}
-                };
-
-                bool isAnyDataCameFromDb = numbers.Count > 0 || texts.Count > 0 || dates.Count > 0;
-
-                foreach (var (config,items) in dictionary)
-                {
-                    var fromFile = config[0];
-                    var credential = config[1];
-                    _logger.LogInformation($"Checking process is started for {fromFile}s service");
-                    var entityDtoList = items as IEntityDto[] ?? items.ToArray();
-                    if (!entityDtoList.Any())
-                    {
-                        _logger.LogInformation($"There is not any data found for {fromFile}s service!");
-                        continue;
-                    }
-                    var (from, to) = await WriteListAndReturnLastConfig(entityDtoList, fromFile);
-                    await _ftpHelpers.UploadFile(credential, credential, from, to);
+                    _logger.LogInformation($"There is not any data found for {fromFile}s service!");
+                    continue;
                 }
 
-                if (isAnyDataCameFromDb)
+                var lastConfig = await WriteListAndReturnLastConfig(entityDtoList, fromFile);
+                if (lastConfig is null) continue;
+
+                // lastConfig.Item1 is {from} and lastConfig.Item2 is {to}
+                var uploaded = await _ftpHelpers.UploadFile(credential, credential, lastConfig.Item1, lastConfig.Item2);
+                if (uploaded)
                 {
-                    await DeleteOldData();
-                    _logger.LogInformation("Transfer and Truncate processes are completed!");
+                    var tableName = fromFile;
+                    successfulTables.Add($"{tableName}s");
                 }
             }
-            catch (WebException e)
+            
+            if (isAnyDataCameFromDb && successfulTables.Any())
             {
-                string status = ((FtpWebResponse) e.Response)?.StatusDescription;
-                _logger.LogCritical(status);
+                await DeleteOldData(successfulTables);
+                _logger.LogInformation("Transfer and Truncate processes are completed!");
             }
         }
 
         private async Task<Tuple<string, string>> WriteListAndReturnLastConfig(IEnumerable<IEntityDto> list, string fromFile)
         {
-            var from = $"F:\\tempdbrecovery\\{fromFile}.txt";
-            using (var stream = File.WriteAllTextAsync(from, string.Empty))
+            try
             {
-                if (stream.IsCompletedSuccessfully)
+                var from = $"{_filePathOptions.TempDataFolder}\\{fromFile.ToLower()}.txt";
+                using (var stream = File.WriteAllTextAsync(from, string.Empty))
                 {
-                    _logger.LogInformation($"{from} is cleaned for writing something new in it.");
+                    if (stream.IsCompletedSuccessfully)
+                    {
+                        _logger.LogInformation($"{from} is cleaned for writing something new in it.");
+                    }
+                    stream.Dispose();
                 }
-                stream.Dispose();
+                await using (var writer = new StreamWriter(from))
+                {
+                    foreach (var dto in list)
+                    {
+                        await writer.WriteLineAsync(dto.ToString());
+                    }
+                }
+
+                //var key = GenerateKeyEndingForFileName();
+                var to = $"{fromFile}s-{Guid.NewGuid()}.txt";
+
+                return Tuple.Create(from, to);
             }
-            await using (var writer = new StreamWriter(from))
+            catch (Exception e)
             {
-                foreach (var dto in list)
-                {
-                    await writer.WriteLineAsync(dto.ToString());
-                }
+                _logger.LogError(e, e.Message);
+                return null;
             }
-
-            //var key = GenerateKeyEndingForFileName();
-            var to = $"{fromFile}s-{Guid.NewGuid()}.txt";
-
-            return Tuple.Create(from, to);
         }
 
         //private string GenerateKeyEndingForFileName()
@@ -110,10 +127,10 @@ namespace FTPBasedSystem.API.ScheduledTasks
         //    return key;
         //}
 
-        public async Task DeleteOldData()
+        public async Task DeleteOldData(IEnumerable<string> tables)
         {
-            await _context.ClearAllTables();
-            Console.WriteLine("All entities are cleared!!");
+            await _context.ClearAllTables(tables);
+            _logger.LogInformation("All proper entities are cleared!!");
         }
     }
 }
