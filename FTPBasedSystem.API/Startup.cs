@@ -60,11 +60,15 @@ namespace FTPBasedSystem.API
 
             services.AddAutoMapper(typeof(EntitiesMappingProfile));
 
-            services.AddHangfire(config =>
+            services.AddSingleton<AutomaticRetryAttribute>();
+            services.AddHangfire((provider, config) =>
+            {
                 config.SetDataCompatibilityLevel(CompatibilityLevel.Version_170)
                     .UseSimpleAssemblyNameTypeSerializer()
                     .UseDefaultTypeSerializer()
-                    .UseMemoryStorage());
+                    .UseMemoryStorage();
+                config.UseFilter(provider.GetRequiredService<AutomaticRetryAttribute>());
+            });
             services.AddHangfireServer();
 
             // add functionality to inject IOptions<T> Generic Interface to use configurations from appsettings.json
@@ -72,26 +76,28 @@ namespace FTPBasedSystem.API
             services.Configure<CronOptions>(Configuration.GetSection(nameof(CronOptions)));
             services.Configure<FilePathOptions>(Configuration.GetSection(nameof(FilePathOptions)));
             services.Configure<FtpRequestOptions>(Configuration.GetSection(nameof(FtpRequestOptions)));
+            services.Configure<HangfireOptions>(Configuration.GetSection(nameof(HangfireOptions)));
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env,
             IBackgroundJobClient backJobClient, IRecurringJobManager recurringJobManager,
-            IServiceProvider serviceProvider, IOptions<CronOptions> cronOptions)
+            IServiceProvider serviceProvider, IOptions<CronOptions> cronOptions, IOptions<HangfireOptions> hangfireOptions)
         {
             if (env.IsDevelopment())
             {
                 app.UseDeveloperExceptionPage();
                 app.UseSwagger();
                 app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "FTPBasedSystem.API v1"));
-
-                var databaseChecker = serviceProvider.GetRequiredService<ICheckDatabaseMiddleware>();
-                app.UseHangfireDashboard("/hang-dashboard");
-                backJobClient.Enqueue(() => Console.WriteLine("Fired!"));
-                var cron = Generators.CronGenerator(cronOptions.Value);
-                recurringJobManager.AddOrUpdate("DbCheck12345", 
-                    () => databaseChecker.FetchAndSendToFtpServer(), cron);
             }
+
+            var hangConfig = hangfireOptions.Value;
+            var databaseChecker = serviceProvider.GetRequiredService<ICheckDatabaseMiddleware>();
+            app.UseHangfireDashboard(hangConfig.DashboardUiEndpoint);
+            //backJobClient.Enqueue(() => Console.WriteLine("Fired!"));
+            var cron = Generators.CronGenerator(cronOptions.Value);
+            recurringJobManager.AddOrUpdate(hangConfig.RecurringJobId,
+                () => databaseChecker.FetchAndSendToFtpServer(), cron);
 
             app.UseStaticFiles();
             app.UseRouting();
