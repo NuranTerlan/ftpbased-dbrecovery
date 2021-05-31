@@ -11,7 +11,7 @@ namespace FTPBasedSystem.DATAACCESS.Data
 {
     public class AppDbContext : DbContext, IAppDbContext
     {
-        private IEnumerable<string> _notDeletedTables;
+        private readonly IEnumerable<string> _notDeletedTables;
 
         public DbSet<Number> Numbers { get; set; }
         public DbSet<Text> Texts { get; set; }
@@ -36,13 +36,13 @@ namespace FTPBasedSystem.DATAACCESS.Data
             return base.SaveChangesAsync(cancellationToken);
         }
 
-        public async Task ClearAllTables()
+        public async Task ClearAllTables(IEnumerable<string> tables)
         {
-            var listOfTables = this.Model.GetEntityTypes()
-                .Select(t => t.GetTableName())
-                .Distinct();
+            //var listOfTables = this.Model.GetEntityTypes()
+            //    .Select(t => t.GetTableName())
+            //    .Distinct();
 
-            foreach (var table in listOfTables)
+            foreach (var table in tables)
             {
                 if (_notDeletedTables.Any(t => t.Equals(table)))
                 {
