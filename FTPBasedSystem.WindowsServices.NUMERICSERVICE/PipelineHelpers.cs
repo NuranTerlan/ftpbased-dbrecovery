@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Collections.Specialized;
+using System.Configuration;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -11,13 +13,17 @@ namespace FTPBasedSystem.WindowsServices.NUMERICSERVICE
 {
     public static class PipelineHelpers
     {
-        public const string Credential = "numericservice";
+        private static readonly NameValueCollection Configurations = ConfigurationManager.AppSettings;
+
+        private static readonly string Credential = Configurations.Get("FtpCredential");
+        private static readonly string HostName = Configurations.Get("FtpHostName");
+        private static readonly string FtpBaseRequestUri = "ftp://" + HostName + '/';
 
         public static string ReadFromFtp(string directory)
         {
             if (directory is null) throw new ArgumentNullException(nameof(directory));
 
-            var ftpIp = "ftp://127.0.0.1/" + directory;
+            var ftpIp = FtpBaseRequestUri + directory;
             var ftpRequest = (FtpWebRequest) WebRequest.Create(ftpIp);
             ftpRequest.CachePolicy = new RequestCachePolicy(RequestCacheLevel.CacheIfAvailable);
 
@@ -45,7 +51,7 @@ namespace FTPBasedSystem.WindowsServices.NUMERICSERVICE
 
         public static void UploadFileViaFtp(string fileContents, string to)
         {
-            var ftpIp = "ftp://127.0.0.1/" + to;
+            var ftpIp = FtpBaseRequestUri + to;
             var ftpRequest = (FtpWebRequest)WebRequest.Create(ftpIp);
             ftpRequest.UseBinary = true;
             ftpRequest.UsePassive = true;
@@ -92,11 +98,11 @@ namespace FTPBasedSystem.WindowsServices.NUMERICSERVICE
 
             var factory = new ConnectionFactory
             {
-                Uri = new Uri("amqp://guest:guest@localhost:5672")
+                Uri = new Uri(Configurations.Get("MQHostName") ?? string.Empty)
             };
             using var connection = factory.CreateConnection();
             using var channel = connection.CreateModel();
-            const string queueName = "numbers-queue";
+            string queueName = Configurations.Get("QueueName");
             channel.QueueDeclare(queueName,
                 durable: true,
                 exclusive: false,
@@ -105,7 +111,7 @@ namespace FTPBasedSystem.WindowsServices.NUMERICSERVICE
 
             var message = new QueueMessage
             {
-                Name = "Numeric-Producer",
+                Name = Configurations.Get("MessageProducer"),
                 Message = result
             };
 

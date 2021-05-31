@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Collections.Specialized;
+using System.Configuration;
 using System.IO;
 using System.Net;
 using System.Net.Cache;
@@ -12,13 +14,17 @@ namespace FTPBasedSystem.WindowsServices.STORESERVICE
 {
     public static class PipelineHelpers
     {
-        private const string Credential = "storeservice";
+        private static readonly NameValueCollection Configurations = ConfigurationManager.AppSettings;
+
+        private static readonly string Credential = Configurations.Get("FtpCredential");
+        private static readonly string HostName = Configurations.Get("FtpHostName");
+        private static readonly string FtpBaseRequestUri = "ftp://" + HostName + '/';
 
         public static string ReadFromFtp(string directory)
         {
             if (directory is null) throw new ArgumentNullException(nameof(directory));
 
-            var ftpIp = "ftp://127.0.0.1/" + directory;
+            var ftpIp = FtpBaseRequestUri + directory;
             var ftpRequest = (FtpWebRequest)WebRequest.Create(ftpIp);
             ftpRequest.CachePolicy = new RequestCachePolicy(RequestCacheLevel.CacheIfAvailable);
 
@@ -46,7 +52,7 @@ namespace FTPBasedSystem.WindowsServices.STORESERVICE
 
         public static void UploadFileViaFtp(string fileContents, string to)
         {
-            var ftpIp = "ftp://127.0.0.1/" + to;
+            var ftpIp = FtpBaseRequestUri + to;
             var ftpRequest = (FtpWebRequest)WebRequest.Create(ftpIp);
             ftpRequest.UseBinary = true;
             ftpRequest.UsePassive = true;
@@ -73,19 +79,19 @@ namespace FTPBasedSystem.WindowsServices.STORESERVICE
         {
             var factory = new ConnectionFactory
             {
-                Uri = new Uri("amqp://guest:guest@localhost:5672")
+                Uri = new Uri(Configurations.Get("MQHostName") ?? string.Empty)
             };
 
             using var connection = factory.CreateConnection();
             using var channel = connection.CreateModel();
-            var dictionary = new Dictionary<string, string>
+            var queues = new List<string>
             {
-                {"dates-queue", "datesservice"},
-                {"numbers-queue", "numericservice"},
-                {"texts-queue", "textservice"}
+                Configurations.Get("DatesQueueName"),
+                Configurations.Get("NumbersQueueName"),
+                Configurations.Get("TextsQueueName")
             };
 
-            foreach (var (queue, credential) in dictionary)
+            foreach (var queue in queues)
             {
                 channel.QueueDeclare(queue,
                     durable: true,
