@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using FTPBasedSystem.DOMAINENTITIES.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 
 namespace FTPBasedSystem.DATAACCESS.Data.Abstraction
 {
@@ -13,8 +14,10 @@ namespace FTPBasedSystem.DATAACCESS.Data.Abstraction
         DbSet<Text> Texts { get; set; }
         DbSet<Date> Dates { get; set; }
         DbSet<Action> Actions { get; set; }
+        DatabaseFacade Database { get; }
         Task<int> SaveChangesAsync(CancellationToken cancellationToken);
 
-        Task ClearAllTables(IEnumerable<string> tables);
+        Task ClearAllTables();
+        Task ClearSpecificTables(IEnumerable<string> tables);
     }
 }

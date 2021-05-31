@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using FTPBasedSystem.DATAACCESS.Data.Abstraction;
 using FTPBasedSystem.DOMAINENTITIES.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 
 namespace FTPBasedSystem.DATAACCESS.Data
 {
@@ -31,17 +32,17 @@ namespace FTPBasedSystem.DATAACCESS.Data
             };
         }
 
-        public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = new CancellationToken())
+        public async Task ClearAllTables()
         {
-            return base.SaveChangesAsync(cancellationToken);
+            var listOfTables = this.Model.GetEntityTypes()
+                .Select(t => t.GetTableName())
+                .Distinct();
+            
+            await ClearSpecificTables(listOfTables);
         }
 
-        public async Task ClearAllTables(IEnumerable<string> tables)
+        public async Task ClearSpecificTables(IEnumerable<string> tables)
         {
-            //var listOfTables = this.Model.GetEntityTypes()
-            //    .Select(t => t.GetTableName())
-            //    .Distinct();
-
             foreach (var table in tables)
             {
                 if (_notDeletedTables.Any(t => t.Equals(table)))
