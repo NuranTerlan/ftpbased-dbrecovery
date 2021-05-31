@@ -71,6 +71,7 @@ namespace FTPBasedSystem.API
             services.AddOptions();
             services.Configure<CronOptions>(Configuration.GetSection(nameof(CronOptions)));
             services.Configure<FilePathOptions>(Configuration.GetSection(nameof(FilePathOptions)));
+            services.Configure<FtpRequestOptions>(Configuration.GetSection(nameof(FtpRequestOptions)));
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
