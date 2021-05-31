@@ -1,4 +1,6 @@
 using System;
+using FTPBasedSystem.API.Configs;
+using FTPBasedSystem.API.Helpers;
 using FTPBasedSystem.API.ScheduledTasks;
 using FTPBasedSystem.API.ScheduledTasks.Abstract;
 using FTPBasedSystem.DATAACCESS.Data;
@@ -16,6 +18,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 using Microsoft.OpenApi.Models;
 
 namespace FTPBasedSystem.API
@@ -63,12 +66,17 @@ namespace FTPBasedSystem.API
                     .UseDefaultTypeSerializer()
                     .UseMemoryStorage());
             services.AddHangfireServer();
+
+            // add functionality to inject IOptions<T> Generic Interface to use configurations from appsettings.json
+            services.AddOptions();
+            services.Configure<CronOptions>(Configuration.GetSection(nameof(CronOptions)));
+            services.Configure<FilePathOptions>(Configuration.GetSection(nameof(FilePathOptions)));
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env,
             IBackgroundJobClient backJobClient, IRecurringJobManager recurringJobManager,
-            IServiceProvider serviceProvider)
+            IServiceProvider serviceProvider, IOptions<CronOptions> cronOptions)
         {
             if (env.IsDevelopment())
             {
@@ -79,8 +87,9 @@ namespace FTPBasedSystem.API
                 var databaseChecker = serviceProvider.GetRequiredService<ICheckDatabaseMiddleware>();
                 app.UseHangfireDashboard("/hang-dashboard");
                 backJobClient.Enqueue(() => Console.WriteLine("Fired!"));
+                var cron = Generators.CronGenerator(cronOptions.Value);
                 recurringJobManager.AddOrUpdate("DbCheck12345", 
-                    () => databaseChecker.FetchAndSendToFtpServer(), "*/3 * * * *");
+                    () => databaseChecker.FetchAndSendToFtpServer(), cron);
             }
 
             app.UseStaticFiles();
