@@ -1,4 +1,6 @@
-﻿using System.Threading;
+﻿using System.Collections;
+using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using FTPBasedSystem.DOMAINENTITIES.Models;
 using Microsoft.EntityFrameworkCore;
@@ -13,6 +15,6 @@ namespace FTPBasedSystem.DATAACCESS.Data.Abstraction
         DbSet<Action> Actions { get; set; }
         Task<int> SaveChangesAsync(CancellationToken cancellationToken);
 
-        Task ClearAllTables();
+        Task ClearAllTables(IEnumerable<string> tables);
     }
 }
