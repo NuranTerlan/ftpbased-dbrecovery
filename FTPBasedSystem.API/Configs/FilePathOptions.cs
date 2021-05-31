@@ -9,5 +9,6 @@
         public string FtpText { get; set; }
         public string FtpNumeric { get; set; }
         public string TempDataFolder { get; set; }
+        public string FtpHostName { get; set; }
     }
 }
