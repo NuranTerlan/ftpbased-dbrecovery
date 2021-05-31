@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Collections.Specialized;
+using System.Configuration;
 using System.Linq;
 using System.Threading;
 using WinSCP;
@@ -8,20 +10,22 @@ namespace FTPBasedSystem.WindowsServices.TEXTSERVICE
 {
     public class FtpDirectoryWatcher
     {
-        private const string Ip = "127.0.0.1";
-        private const string Credential = "textservice";
+        private readonly NameValueCollection _configurations = ConfigurationManager.AppSettings;
 
         public void WatchDirectory()
         {
+            var ip = _configurations.Get("FtpHostName");
+            var credential = _configurations.Get("FtpCredential");
+
             try
             {
                 // Setup session options
                 var sessionOptions = new SessionOptions
                 {
                     Protocol = Protocol.Ftp,
-                    HostName = Ip,
-                    UserName = Credential,
-                    Password = Credential,
+                    HostName = ip,
+                    UserName = credential,
+                    Password = credential,
                     FtpMode = FtpMode.Active
                 };
 
@@ -84,7 +88,7 @@ namespace FTPBasedSystem.WindowsServices.TEXTSERVICE
                         prevFiles = files;
 
                         //Console.WriteLine("- - - - Idle");
-                        Thread.Sleep(TimeSpan.FromSeconds(2));
+                        Thread.Sleep(TimeSpan.FromSeconds(3));
                     }
                 }
             }
