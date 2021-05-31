@@ -31,7 +31,7 @@ namespace FTPBasedSystem.API.Controllers
         }
 
         [HttpPost(DistributionRoutes.Date.Create)]
-        public async Task<IActionResult> AddNumber([FromBody] DateDto model)
+        public async Task<IActionResult> AddDate([FromBody] DateDto model)
         {
             var record = await _dateService.Create(model);
             _logger.LogInformation(record.Message);
@@ -39,7 +39,7 @@ namespace FTPBasedSystem.API.Controllers
         }
 
         [HttpPost(DistributionRoutes.Text.Create)]
-        public async Task<IActionResult> AddNumber([FromBody] TextDto model)
+        public async Task<IActionResult> AddText([FromBody] TextDto model)
         {
             var record = await _textService.Create(model);
             _logger.LogInformation(record.Message);
