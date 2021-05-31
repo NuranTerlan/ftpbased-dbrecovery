@@ -11,6 +11,7 @@ using FTPBasedSystem.DATAACCESS.Data.Abstraction;
 using FTPBasedSystem.DOMAINENTITIES.DTOs;
 using FTPBasedSystem.SERVICES.Abstraction;
 using FTPBasedSystem.SERVICES.FtpServices.Abstraction;
+using Hangfire;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -36,12 +37,27 @@ namespace FTPBasedSystem.API.ScheduledTasks
             _ftpRequestOptions = ftpRequestOptions.Value;
         }
 
+        [AutomaticRetry(Attempts = 0)] // it means if job break for some reason don't retry again, just wait for next one
         public async Task FetchAndSendToFtpServer()
         {
-            var successfulTables = new HashSet<string>();
+            //var successfulTables = new HashSet<string>();
             var numbers = await _unitOfWork.Numeric.GetAllEntities();
             var texts = await _unitOfWork.Text.GetAllEntities();
             var dates = await _unitOfWork.Date.GetAllEntities();
+
+            if (numbers is null || texts is null || dates is null)
+            {
+                _logger.LogWarning("Something wrong with database because some of tables return null..");
+                return;
+            }
+
+            var isAnyDataCameFromDb = numbers.Count > 0 || texts.Count > 0 || dates.Count > 0;
+
+            if (!isAnyDataCameFromDb)
+            {
+                _logger.LogInformation("Nothing found in db related with domain entities!");
+                return;
+            }
 
             var dictionary = new Dictionary<List<string>, IEnumerable<IEntityDto>>
             {
@@ -50,37 +66,49 @@ namespace FTPBasedSystem.API.ScheduledTasks
                 {new List<string>{_filePathOptions.LocalDate, _ftpRequestOptions.DateCredential}, dates}
             };
 
-            var isAnyDataCameFromDb = numbers.Count > 0 || texts.Count > 0 || dates.Count > 0;
-
             foreach (var (config,items) in dictionary)
             {
-                var fromFile = Generators.FirstCaseUpperStringGenerator(config[0]);
-                var credential = config[1].ToLower();
-                _logger.LogInformation($"Checking process is started for {fromFile}s service");
-
-                var entityDtoList = items as IEntityDto[] ?? items.ToArray();
-                if (!entityDtoList.Any())
+                await using (var transaction = await _context.Database.BeginTransactionAsync())
                 {
-                    _logger.LogInformation($"There is not any data found for {fromFile}s service!");
-                    continue;
-                }
+                    try
+                    {
+                        var fromFile = Generators.FirstCaseUpperStringGenerator(config[0]);
+                        var credential = config[1].ToLower();
+                        _logger.LogInformation($"Checking process is started for {fromFile}s service");
 
-                var lastConfig = await WriteListAndReturnLastConfig(entityDtoList, fromFile.ToLower());
-                if (lastConfig is null) continue;
+                        var entityDtoList = items as IEntityDto[] ?? items.ToArray();
+                        if (!entityDtoList.Any())
+                        {
+                            _logger.LogInformation($"There is not any data found for {fromFile}s service!");
+                            continue;
+                        }
 
-                // lastConfig.Item1 is {from} and lastConfig.Item2 is {to}
-                var uploaded = await _ftpHelpers.UploadFile(_ftpRequestOptions.HostName, credential, lastConfig.Item1, lastConfig.Item2);
-                if (uploaded)
-                {
-                    var tableName = fromFile;
-                    successfulTables.Add($"{tableName}s");
+                        await DeleteOldData();
+
+                        var lastConfig = await WriteListAndReturnLastConfig(entityDtoList, fromFile.ToLower());
+                        if (lastConfig is null) continue;
+
+                        // lastConfig.Item1 is {from} and lastConfig.Item2 is {to}
+                        /*var uploaded = */
+                        await _ftpHelpers.UploadFile(_ftpRequestOptions.HostName, credential, lastConfig.Item1,
+                            lastConfig.Item2);
+                        //if (uploaded)
+                        //{
+                        //    var tableName = fromFile;
+                        //    successfulTables.Add($"{tableName}s");
+                        //}
+                        await transaction.CommitAsync();
+                    }
+                    catch (Exception e)
+                    {
+                        _logger.LogError(e, e.Message);
+                        await transaction.RollbackAsync();
+                    }
+                    finally
+                    {
+                        await transaction.DisposeAsync();
+                    }
                 }
-            }
-            
-            if (isAnyDataCameFromDb && successfulTables.Any())
-            {
-                await DeleteOldData(successfulTables);
-                _logger.LogInformation("Transfer and Truncate processes are completed!");
             }
         }
 
@@ -103,6 +131,8 @@ namespace FTPBasedSystem.API.ScheduledTasks
                     {
                         await writer.WriteLineAsync(dto.ToString());
                     }
+
+                    await writer.DisposeAsync();
                 }
 
                 //var key = GenerateKeyEndingForFileName();
@@ -129,9 +159,9 @@ namespace FTPBasedSystem.API.ScheduledTasks
         //    return key;
         //}
 
-        public async Task DeleteOldData(IEnumerable<string> tables)
+        public async Task DeleteOldData()
         {
-            await _context.ClearAllTables(tables);
+            await _context.ClearAllTables();
             _logger.LogInformation("All proper entities are cleared!!");
         }
     }
