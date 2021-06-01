@@ -6,6 +6,6 @@ namespace FTPBasedSystem.API.ScheduledTasks.Abstract
     public interface ICheckDatabaseMiddleware
     {
         Task FetchAndSendToFtpServer();
-        Task DeleteOldData();
+        Task DeleteOldData(string tableName);
     }
 }
