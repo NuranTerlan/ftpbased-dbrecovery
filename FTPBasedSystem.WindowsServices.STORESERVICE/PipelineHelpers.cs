@@ -75,7 +75,7 @@ namespace FTPBasedSystem.WindowsServices.STORESERVICE
         }
 
 
-        public static void ConnectAndWaitAllMessages()
+        public static void WaitAllMessages()
         {
             var factory = new ConnectionFactory
             {

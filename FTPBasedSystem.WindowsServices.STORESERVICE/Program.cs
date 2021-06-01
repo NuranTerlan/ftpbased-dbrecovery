@@ -8,7 +8,7 @@ namespace FTPBasedSystem.WindowsServices.STORESERVICE
         {
             Console.Title = "Store Service Analyzer";
             Console.WriteLine("WS -> Store Service waiting for new messages from all services..\n");
-            PipelineHelpers.ConnectAndWaitAllMessages();
+            PipelineHelpers.WaitAllMessages();
         }
     }
 }
