@@ -52,5 +52,10 @@ namespace FTPBasedSystem.DATAACCESS.Data
                 await this.Database.ExecuteSqlRawAsync($"TRUNCATE TABLE [{table}]");
             }
         }
+
+        public async Task ClearSpecificTable(string tableName)
+        {
+            await this.Database.ExecuteSqlRawAsync($"TRUNCATE TABLE [{tableName}]");
+        }
     }
 }

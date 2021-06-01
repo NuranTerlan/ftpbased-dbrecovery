@@ -19,5 +19,6 @@ namespace FTPBasedSystem.DATAACCESS.Data.Abstraction
 
         Task ClearAllTables();
         Task ClearSpecificTables(IEnumerable<string> tables);
+        Task ClearSpecificTable(string tableName);
     }
 }
