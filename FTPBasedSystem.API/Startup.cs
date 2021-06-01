@@ -81,8 +81,8 @@ namespace FTPBasedSystem.API
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env,
-            IBackgroundJobClient backJobClient, IRecurringJobManager recurringJobManager,
-            IServiceProvider serviceProvider, IOptions<CronOptions> cronOptions, IOptions<HangfireOptions> hangfireOptions)
+            IRecurringJobManager recurringJobManager, IServiceProvider serviceProvider, 
+            IOptions<CronOptions> cronOptions, IOptions<HangfireOptions> hangfireOptions)
         {
             if (env.IsDevelopment())
             {
@@ -94,7 +94,6 @@ namespace FTPBasedSystem.API
             var hangConfig = hangfireOptions.Value;
             var databaseChecker = serviceProvider.GetRequiredService<ICheckDatabaseMiddleware>();
             app.UseHangfireDashboard(hangConfig.DashboardUiEndpoint);
-            //backJobClient.Enqueue(() => Console.WriteLine("Fired!"));
             var cron = Generators.CronGenerator(cronOptions.Value);
             recurringJobManager.AddOrUpdate(hangConfig.RecurringJobId,
                 () => databaseChecker.FetchAndSendToFtpServer(), cron);
