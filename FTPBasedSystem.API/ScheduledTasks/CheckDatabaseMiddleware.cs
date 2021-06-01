@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Threading;
 using System.Threading.Tasks;
 using FTPBasedSystem.API.Configs;
 using FTPBasedSystem.API.Helpers;
@@ -17,7 +18,7 @@ using Microsoft.Extensions.Options;
 
 namespace FTPBasedSystem.API.ScheduledTasks
 {
-    public class CheckDatabaseMiddleware : ICheckDatabaseMiddleware
+    public class CheckDatabaseMiddleware : ICheckDatabaseMiddleware, IDisposable
     {
         private readonly IAppDbContext _context;
         private readonly ILogger<CheckDatabaseMiddleware> _logger;
@@ -25,6 +26,8 @@ namespace FTPBasedSystem.API.ScheduledTasks
         private readonly IFtpHelpers _ftpHelpers;
         private readonly FilePathOptions _filePathOptions;
         private readonly FtpRequestOptions _ftpRequestOptions;
+
+        private readonly SemaphoreSlim _semLock = new SemaphoreSlim(1, 1);
 
         public CheckDatabaseMiddleware(IAppDbContext context, ILogger<CheckDatabaseMiddleware> logger, IUnitOfWork unitOfWork, 
             IFtpHelpers ftpHelpers, IOptions<FilePathOptions> fileNameOptions, IOptions<FtpRequestOptions> ftpRequestOptions)
@@ -40,75 +43,76 @@ namespace FTPBasedSystem.API.ScheduledTasks
         [AutomaticRetry(Attempts = 0)] // it means if job break for some reason don't retry again, just wait for next one
         public async Task FetchAndSendToFtpServer()
         {
-            //var successfulTables = new HashSet<string>();
-            var numbers = await _unitOfWork.Numeric.GetAllEntities();
-            var texts = await _unitOfWork.Text.GetAllEntities();
-            var dates = await _unitOfWork.Date.GetAllEntities();
-
-            if (numbers is null || texts is null || dates is null)
+            await _semLock.WaitAsync();
+            try
             {
-                _logger.LogWarning("Something wrong with database because some of tables return null..");
-                return;
-            }
+                var numbers = await _unitOfWork.Numeric.GetAllEntities();
+                var texts = await _unitOfWork.Text.GetAllEntities();
+                var dates = await _unitOfWork.Date.GetAllEntities();
 
-            var isAnyDataCameFromDb = numbers.Count > 0 || texts.Count > 0 || dates.Count > 0;
-
-            if (!isAnyDataCameFromDb)
-            {
-                _logger.LogInformation("Nothing found in db related with domain entities!");
-                return;
-            }
-
-            var dictionary = new Dictionary<List<string>, IEnumerable<IEntityDto>>
-            {
-                {new List<string> {_filePathOptions.LocalNumeric, _ftpRequestOptions.NumericCredential}, numbers},
-                {new List<string>{_filePathOptions.LocalText, _ftpRequestOptions.TextCredential}, texts},
-                {new List<string>{_filePathOptions.LocalDate, _ftpRequestOptions.DateCredential}, dates}
-            };
-
-            foreach (var (config,items) in dictionary)
-            {
-                await using (var transaction = await _context.Database.BeginTransactionAsync())
+                if (numbers is null || texts is null || dates is null)
                 {
-                    try
-                    {
-                        var fromFile = Generators.FirstCaseUpperStringGenerator(config[0]);
-                        var credential = config[1].ToLower();
-                        _logger.LogInformation($"Checking process is started for {fromFile}s service");
+                    _logger.LogWarning("Something wrong with database because some of tables return null..");
+                    return;
+                }
 
-                        var entityDtoList = items as IEntityDto[] ?? items.ToArray();
-                        if (!entityDtoList.Any())
+                var isAnyDataCameFromDb = numbers.Count > 0 || texts.Count > 0 || dates.Count > 0;
+
+                if (!isAnyDataCameFromDb)
+                {
+                    _logger.LogInformation("Nothing found in db related with domain entities!");
+                    return;
+                }
+
+                var dictionary = new Dictionary<List<string>, IEnumerable<IEntityDto>>
+                {
+                    {new List<string> {_filePathOptions.LocalNumeric, _ftpRequestOptions.NumericCredential}, numbers},
+                    {new List<string> {_filePathOptions.LocalText, _ftpRequestOptions.TextCredential}, texts},
+                    {new List<string> {_filePathOptions.LocalDate, _ftpRequestOptions.DateCredential}, dates}
+                };
+
+                foreach (var (config, items) in dictionary)
+                {
+                    await using (var transaction = await _context.Database.BeginTransactionAsync())
+                    {
+                        try
                         {
-                            _logger.LogInformation($"There is not any data found for {fromFile}s service!");
-                            continue;
+                            var fromFile = Generators.FirstCaseUpperStringGenerator(config[0]);
+                            var credential = config[1].ToLower();
+                            _logger.LogInformation($"Checking process is started for {fromFile}s service");
+
+                            var entityDtoList = items as IEntityDto[] ?? items.ToArray();
+                            if (!entityDtoList.Any())
+                            {
+                                _logger.LogInformation($"There is not any data found for {fromFile}s service!");
+                                continue;
+                            }
+
+                            await DeleteOldData(fromFile + 's');
+
+                            var lastConfig = await WriteListAndReturnLastConfig(entityDtoList, fromFile.ToLower());
+                            if (lastConfig is null) continue;
+
+                            // lastConfig.Item1 is {from} and lastConfig.Item2 is {to}
+                            await _ftpHelpers.UploadFile(_ftpRequestOptions.HostName, credential, lastConfig.Item1,
+                                lastConfig.Item2);
+                            await transaction.CommitAsync();
                         }
-
-                        await DeleteOldData();
-
-                        var lastConfig = await WriteListAndReturnLastConfig(entityDtoList, fromFile.ToLower());
-                        if (lastConfig is null) continue;
-
-                        // lastConfig.Item1 is {from} and lastConfig.Item2 is {to}
-                        /*var uploaded = */
-                        await _ftpHelpers.UploadFile(_ftpRequestOptions.HostName, credential, lastConfig.Item1,
-                            lastConfig.Item2);
-                        //if (uploaded)
-                        //{
-                        //    var tableName = fromFile;
-                        //    successfulTables.Add($"{tableName}s");
-                        //}
-                        await transaction.CommitAsync();
-                    }
-                    catch (Exception e)
-                    {
-                        _logger.LogError(e, e.Message);
-                        await transaction.RollbackAsync();
-                    }
-                    finally
-                    {
-                        await transaction.DisposeAsync();
+                        catch (Exception e)
+                        {
+                            _logger.LogError(e, e.Message);
+                            await transaction.RollbackAsync();
+                        }
+                        finally
+                        {
+                            await transaction.DisposeAsync();
+                        }
                     }
                 }
+            }
+            finally
+            {
+                _semLock.Release();
             }
         }
 
@@ -135,7 +139,6 @@ namespace FTPBasedSystem.API.ScheduledTasks
                     await writer.DisposeAsync();
                 }
 
-                //var key = GenerateKeyEndingForFileName();
                 var to = $"{fromFile}s-{Guid.NewGuid()}.txt";
 
                 return Tuple.Create(from, to);
@@ -159,10 +162,15 @@ namespace FTPBasedSystem.API.ScheduledTasks
         //    return key;
         //}
 
-        public async Task DeleteOldData()
+        public async Task DeleteOldData(string tableName)
         {
-            await _context.ClearAllTables();
-            _logger.LogInformation("All proper entities are cleared!!");
+            await _context.ClearSpecificTable(tableName);
+            _logger.LogInformation($"All proper entities are cleared for {tableName}!");
+        }
+
+        public void Dispose()
+        {
+            
         }
     }
 }
